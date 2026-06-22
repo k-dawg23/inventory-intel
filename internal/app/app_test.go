@@ -3,11 +3,15 @@ package app
 import (
 	"bytes"
 	"database/sql"
+	"encoding/json"
 	"io"
 	"mime/multipart"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -46,6 +50,25 @@ func countRows(t *testing.T, db *sql.DB, query string) int {
 		t.Fatal(err)
 	}
 	return count
+}
+
+func loginAsDemo(t *testing.T, app *App) *http.Cookie {
+	t.Helper()
+	body := strings.NewReader(`{"identifier":"kenneth","password":"DemoAdmin123!"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/login", body)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	app.Routes().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("login failed: status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	res := rec.Result()
+	t.Cleanup(func() { _ = res.Body.Close() })
+	cookies := res.Cookies()
+	if len(cookies) == 0 {
+		t.Fatal("expected session cookie")
+	}
+	return cookies[0]
 }
 
 func TestDemoSeedPopulatesRealisticDataset(t *testing.T) {
@@ -216,5 +239,76 @@ func TestGenerateInsightRunRealModeRequiresAPIKey(t *testing.T) {
 	}
 	if run.ErrorMessage == "" {
 		t.Fatal("expected stored error message")
+	}
+}
+
+func TestProtectedAPIRequiresAuthentication(t *testing.T) {
+	app := newTestApp(t)
+	req := httptest.NewRequest(http.MethodGet, "/api/bootstrap", nil)
+	rec := httptest.NewRecorder()
+	app.Routes().ServeHTTP(rec, req)
+	if got, want := rec.Code, http.StatusUnauthorized; got != want {
+		t.Fatalf("status: got %d want %d", got, want)
+	}
+}
+
+func TestDemoAdminLoginCreatesSessionAndUpdatesLastLogin(t *testing.T) {
+	app := newTestApp(t)
+	body := strings.NewReader(`{"identifier":"kenneth@inventoryintel.demo","password":"DemoAdmin123!"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/login", body)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	app.Routes().ServeHTTP(rec, req)
+	if got, want := rec.Code, http.StatusOK; got != want {
+		t.Fatalf("status: got %d want %d body=%s", got, want, rec.Body.String())
+	}
+
+	var payload authSessionPayload
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if !payload.Authenticated || payload.User == nil {
+		t.Fatal("expected authenticated session payload")
+	}
+	if got, want := payload.User.Name, demoAdminName; got != want {
+		t.Fatalf("user name: got %q want %q", got, want)
+	}
+	if payload.User.LastLogin == "" {
+		t.Fatal("expected last login to be populated")
+	}
+	if len(rec.Result().Cookies()) == 0 {
+		t.Fatal("expected session cookie to be set")
+	}
+}
+
+func TestAuthenticatedRequestsUseSessionUserForAuditAttribution(t *testing.T) {
+	app := newTestApp(t)
+	cookie := loginAsDemo(t, app)
+	productID := productIDBySKU(t, app.db, "SKU-1001")
+
+	body := strings.NewReader(`{"sku":"SKU-1001","name":"Noise Cancelling Headphones","description":"Updated","category":"Audio","unitCost":40,"sellingPrice":120,"currentStock":18,"reorderLevel":6,"active":true}`)
+	req := httptest.NewRequest(http.MethodPut, "/api/products/"+strconv.FormatInt(productID, 10), body)
+	req.SetPathValue("id", strconv.FormatInt(productID, 10))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	app.Routes().ServeHTTP(rec, req)
+	if got, want := rec.Code, http.StatusOK; got != want {
+		t.Fatalf("status: got %d want %d body=%s", got, want, rec.Body.String())
+	}
+
+	events, err := app.listAudit()
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, event := range events {
+		if event.EntityType == "product" && event.EntityID == productID && event.Actor == demoAdminName {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("expected audit event attributed to demo admin")
 	}
 }

@@ -6,6 +6,14 @@ It also includes AI-powered inventory insights with two modes:
 - `simulation` mode for demo output without external API calls
 - `real` mode using the OpenAI Responses API when configured in `.env`
 
+## Demo login
+
+The MVP includes a single seeded administrator account:
+
+- Email: `kenneth@inventoryintel.demo`
+- Username: `kenneth`
+- Password: `DemoAdmin123!`
+
 ## Run locally
 
 ```bash

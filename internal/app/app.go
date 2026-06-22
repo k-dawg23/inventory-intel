@@ -182,6 +182,10 @@ func New(cfg Config) (*App, error) {
 		_ = db.Close()
 		return nil, err
 	}
+	if err := app.ensureDemoAdminUser(); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
 
 	return app, nil
 }
@@ -192,6 +196,10 @@ func (a *App) Close() error {
 
 func (a *App) Routes() http.Handler {
 	mux := http.NewServeMux()
+
+	mux.HandleFunc("POST /api/auth/login", a.handleLogin)
+	mux.HandleFunc("POST /api/auth/logout", a.handleLogout)
+	mux.HandleFunc("GET /api/auth/session", a.handleSession)
 
 	mux.HandleFunc("GET /api/bootstrap", a.handleBootstrap)
 	mux.HandleFunc("GET /api/products", a.handleListProducts)
@@ -226,7 +234,7 @@ func (a *App) Routes() http.Handler {
 	fileServer := http.FileServer(http.Dir("web"))
 	mux.Handle("/", fileServer)
 
-	return recoverMiddleware(mux)
+	return recoverMiddleware(a.sessionMiddleware(a.apiAuthMiddleware(mux)))
 }
 
 func recoverMiddleware(next http.Handler) http.Handler {
@@ -376,11 +384,10 @@ func boolInt(value bool) int {
 }
 
 func parseActor(r *http.Request) string {
-	actor := strings.TrimSpace(r.Header.Get("X-Actor"))
-	if actor == "" {
-		actor = "admin"
+	if user, ok := currentUser(r); ok {
+		return user.Name
 	}
-	return actor
+	return demoAdminName
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {

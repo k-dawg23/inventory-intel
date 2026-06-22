@@ -1,5 +1,5 @@
 const state = {
-  actor: "Kenneth",
+  user: null,
   currentView: "dashboard",
   data: null,
   managementPanels: {
@@ -58,21 +58,111 @@ document.addEventListener("DOMContentLoaded", () => {
     state.currentView = hashView;
   }
   bindShell();
-  loadData();
+  bindAuth();
+  hydrateSession();
 });
 
 function bindShell() {
   document.getElementById("menuToggle").addEventListener("click", () => setSidebarOpen(true));
   document.getElementById("sidebarBackdrop").addEventListener("click", () => setSidebarOpen(false));
   document.getElementById("refreshBtn").addEventListener("click", loadData);
-  document.getElementById("actorInput").addEventListener("input", (event) => {
-    state.actor = event.target.value || "Kenneth";
-    updateOperatorDisplay();
-  });
 
   document.querySelectorAll(".nav-link").forEach((button) => {
     button.addEventListener("click", () => switchView(button.dataset.view));
   });
+}
+
+function bindAuth() {
+  document.getElementById("loginForm").addEventListener("submit", handleLogin);
+  document.getElementById("logoutBtn").addEventListener("click", handleLogout);
+  document.getElementById("useDemoBtn").addEventListener("click", () => {
+    document.getElementById("loginIdentifier").value = document.getElementById("demoUsername").textContent.trim();
+    document.getElementById("loginPassword").value = document.getElementById("demoPassword").textContent.trim();
+    clearAuthError();
+  });
+}
+
+async function hydrateSession() {
+  try {
+    const session = await publicApi("/api/auth/session");
+    if (session.authenticated && session.user) {
+      state.user = session.user;
+      showApp();
+      await loadData(false);
+      return;
+    }
+  } catch {
+    // fall through to login screen
+  }
+  showLogin();
+}
+
+async function handleLogin(event) {
+  event.preventDefault();
+  clearAuthError();
+  const submit = document.getElementById("loginSubmit");
+  submit.disabled = true;
+  submit.textContent = "Signing In...";
+  try {
+    const session = await publicApi("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({
+        identifier: document.getElementById("loginIdentifier").value.trim(),
+        password: document.getElementById("loginPassword").value,
+      }),
+    });
+    state.user = session.user;
+    document.getElementById("loginForm").reset();
+    showApp();
+    await loadData(false);
+    flash("Signed in successfully.");
+  } catch (error) {
+    showLogin(error.message || "Unable to sign in.");
+  } finally {
+    submit.disabled = false;
+    submit.textContent = "Sign In";
+  }
+}
+
+async function handleLogout() {
+  try {
+    await publicApi("/api/auth/logout", { method: "POST" });
+  } finally {
+    state.user = null;
+    state.data = null;
+    setSidebarOpen(false);
+    showLogin("You have been signed out.");
+  }
+}
+
+function showLogin(message = "") {
+  document.getElementById("authScreen").classList.remove("hidden");
+  document.getElementById("appShell").classList.add("hidden");
+  document.body.classList.remove("menu-open");
+  if (message) {
+    setAuthError(message);
+  } else {
+    clearAuthError();
+  }
+}
+
+function showApp() {
+  document.getElementById("authScreen").classList.add("hidden");
+  document.getElementById("appShell").classList.remove("hidden");
+  clearAuthError();
+  updateOperatorDisplay();
+}
+
+function setAuthError(message) {
+  const node = document.getElementById("authError");
+  node.textContent = message;
+  node.classList.remove("hidden");
+}
+
+function clearAuthError() {
+  const node = document.getElementById("authError");
+  node.textContent = "";
+  node.classList.add("hidden");
 }
 
 function setSidebarOpen(isOpen) {
@@ -103,17 +193,20 @@ function updateHeader() {
 }
 
 function updateOperatorDisplay() {
-  const actor = state.actor || "Kenneth";
-  document.getElementById("operatorName").textContent = actor;
-  document.getElementById("operatorAvatar").textContent = actor.trim().charAt(0).toUpperCase() || "K";
+  const user = state.user || { name: "Administrator", email: "", role: "Administrator" };
+  document.getElementById("operatorName").textContent = user.name;
+  document.getElementById("operatorRole").textContent = user.role || "Administrator";
+  document.getElementById("operatorEmail").textContent = user.email || "";
+  document.getElementById("operatorAvatar").textContent = user.name.trim().charAt(0).toUpperCase() || "A";
 }
 
-async function loadData() {
+async function loadData(showRefreshMessage = true) {
   try {
-    const response = await fetch("/api/bootstrap");
-    state.data = await response.json();
+    state.data = await api("/api/bootstrap");
     renderAll();
-    flash("Live data refreshed.");
+    if (showRefreshMessage) {
+      flash("Live data refreshed.");
+    }
   } catch (error) {
     flash(error.message || "Unable to load data.", "error");
   }
@@ -147,11 +240,31 @@ function flash(message, type = "info") {
 
 async function api(path, options = {}) {
   const isFormData = options.body instanceof FormData;
-  const headers = {
-    "X-Actor": state.actor,
-    ...(options.headers || {}),
-  };
+  const headers = { ...(options.headers || {}) };
   if (!isFormData) {
+    headers["Content-Type"] = "application/json";
+  }
+  const response = await fetch(path, { ...options, headers });
+  if (!response.ok) {
+    if (response.status === 401) {
+      state.user = null;
+      state.data = null;
+      showLogin("Your session has expired. Sign in again.");
+      throw new Error("Your session has expired. Sign in again.");
+    }
+    throw new Error(await response.text());
+  }
+  const contentType = response.headers.get("content-type") || "";
+  if (contentType.includes("application/json")) {
+    return response.json();
+  }
+  return response.text();
+}
+
+async function publicApi(path, options = {}) {
+  const isFormData = options.body instanceof FormData;
+  const headers = { ...(options.headers || {}) };
+  if (options.body && !isFormData && !headers["Content-Type"]) {
     headers["Content-Type"] = "application/json";
   }
   const response = await fetch(path, { ...options, headers });

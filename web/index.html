@@ -7,7 +7,49 @@
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <div class="app-shell">
+    <section id="authScreen" class="auth-screen">
+      <div class="auth-card">
+        <div class="auth-copy">
+          <p class="brand-name">Inventory Intel</p>
+          <h1>Administrator Login</h1>
+          <p>Sign in to open the admin dashboard, manage operations, and attribute every action to a real user session.</p>
+        </div>
+
+        <div class="auth-demo">
+          <p class="auth-demo-label">Demo credentials</p>
+          <div class="auth-demo-grid">
+            <div>
+              <span>Email</span>
+              <strong id="demoEmail">kenneth@inventoryintel.demo</strong>
+            </div>
+            <div>
+              <span>Username</span>
+              <strong id="demoUsername">kenneth</strong>
+            </div>
+            <div>
+              <span>Password</span>
+              <strong id="demoPassword">DemoAdmin123!</strong>
+            </div>
+          </div>
+          <button id="useDemoBtn" class="secondary-button" type="button">Use Demo Credentials</button>
+        </div>
+
+        <form id="loginForm" class="auth-form">
+          <label class="field">
+            <span class="field-label">Email or username</span>
+            <input id="loginIdentifier" name="identifier" autocomplete="username" required />
+          </label>
+          <label class="field">
+            <span class="field-label">Password</span>
+            <input id="loginPassword" name="password" type="password" autocomplete="current-password" required />
+          </label>
+          <p id="authError" class="auth-error hidden"></p>
+          <button id="loginSubmit" class="primary-button" type="submit">Sign In</button>
+        </form>
+      </div>
+    </section>
+
+    <div id="appShell" class="app-shell hidden">
       <button id="sidebarBackdrop" class="sidebar-backdrop" aria-label="Close menu"></button>
 
       <aside id="sidebar" class="sidebar">
@@ -70,13 +112,11 @@
             <div id="operatorAvatar" class="operator-avatar">K</div>
             <div class="operator-meta">
               <strong id="operatorName">Kenneth</strong>
-              <span>Operator</span>
+              <span id="operatorRole">Administrator</span>
+              <span id="operatorEmail">kenneth@inventoryintel.demo</span>
             </div>
           </div>
-          <label class="field">
-            <span class="field-label">Operator name</span>
-            <input id="actorInput" value="Kenneth" />
-          </label>
+          <button id="logoutBtn" class="secondary-button auth-logout" type="button">Sign Out</button>
         </div>
       </aside>
 
