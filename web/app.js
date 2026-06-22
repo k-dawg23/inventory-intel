@@ -647,7 +647,7 @@ function supplierRows(suppliers) {
       <td><div class="table-title"><strong>${supplier.name}</strong><span class="table-note">${supplier.notes || "No supplier notes yet"}</span></div></td>
       <td>${supplier.contactName || "—"}</td>
       <td>${supplier.email || "—"}</td>
-      <td>${supplier.productIds.length}</td>
+      <td>${(supplier.productIds || []).length}</td>
       <td><button class="secondary-button supplier-edit" data-id="${supplier.id}" type="button">Edit</button></td>
     </tr>
   `).join("");
@@ -671,8 +671,9 @@ function bindSupplierButtons() {
       form.email.value = supplier.email;
       form.phone.value = supplier.phone;
       form.notes.value = supplier.notes;
+      const productIds = supplier.productIds || [];
       [...form.productIds.options].forEach((option) => {
-        option.selected = supplier.productIds.includes(Number(option.value));
+        option.selected = productIds.includes(Number(option.value));
       });
     });
   });

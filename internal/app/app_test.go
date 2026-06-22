@@ -39,6 +39,43 @@ func productIDBySKU(t *testing.T, db *sql.DB, sku string) int64 {
 	return id
 }
 
+func countRows(t *testing.T, db *sql.DB, query string) int {
+	t.Helper()
+	var count int
+	if err := db.QueryRow(query).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	return count
+}
+
+func TestDemoSeedPopulatesRealisticDataset(t *testing.T) {
+	app := newTestApp(t)
+	if got, want := countRows(t, app.db, `SELECT COUNT(*) FROM products`), 104; got != want {
+		t.Fatalf("products: got %d want %d", got, want)
+	}
+	if got, want := countRows(t, app.db, `SELECT COUNT(*) FROM suppliers`), 10; got != want {
+		t.Fatalf("suppliers: got %d want %d", got, want)
+	}
+	if got, want := countRows(t, app.db, `SELECT COUNT(*) FROM customer_orders`), 1500; got != want {
+		t.Fatalf("customer orders: got %d want %d", got, want)
+	}
+	if got, want := countRows(t, app.db, `SELECT COUNT(*) FROM purchase_orders`), 300; got != want {
+		t.Fatalf("purchase orders: got %d want %d", got, want)
+	}
+	if got, want := countRows(t, app.db, `SELECT COUNT(*) FROM inventory_transactions`), 7500; got != want {
+		t.Fatalf("inventory transactions: got %d want %d", got, want)
+	}
+	if got, want := countRows(t, app.db, `SELECT COUNT(*) FROM audit_events`), 751; got != want {
+		t.Fatalf("audit events: got %d want %d", got, want)
+	}
+	if got, want := countRows(t, app.db, `SELECT COUNT(*) FROM products WHERE current_stock < reorder_level AND current_stock > 0`), 12; got != want {
+		t.Fatalf("low stock products: got %d want %d", got, want)
+	}
+	if got, want := countRows(t, app.db, `SELECT COUNT(*) FROM products WHERE current_stock = 0`), 4; got != want {
+		t.Fatalf("out of stock products: got %d want %d", got, want)
+	}
+}
+
 func TestAdjustInventoryPreventsNegativeStock(t *testing.T) {
 	app := newTestApp(t)
 	productID := productIDBySKU(t, app.db, "SKU-1002")

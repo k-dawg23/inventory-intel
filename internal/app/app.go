@@ -261,114 +261,43 @@ func (a *App) migrate() error {
 }
 
 func (a *App) seed() error {
-	var count int
-	if err := a.db.QueryRow(`SELECT COUNT(*) FROM products`).Scan(&count); err != nil {
+	if err := a.ensureDemoSeedState(); err != nil {
 		return err
 	}
-	if count > 0 {
+
+	version, err := a.currentDemoSeedVersion()
+	if err != nil {
+		return err
+	}
+	if version == demoSeedVersion {
 		return nil
 	}
 
-	ctx := context.Background()
-	tx, err := a.db.BeginTx(ctx, nil)
+	tx, err := a.db.BeginTx(context.Background(), nil)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() {
+		_ = tx.Rollback()
+	}()
 
-	now := nowString()
-	productIDs := make(map[string]int64)
-	seedProducts := []Product{
-		{SKU: "SKU-1001", Name: "Mechanical Keyboard", Description: "Compact 75% keyboard", Category: "Peripherals", UnitCost: 42, SellingPrice: 89, CurrentStock: 24, ReorderLevel: 10, Active: true},
-		{SKU: "SKU-1002", Name: "Wireless Mouse", Description: "Bluetooth mouse", Category: "Peripherals", UnitCost: 14, SellingPrice: 29, CurrentStock: 8, ReorderLevel: 12, Active: true},
-		{SKU: "SKU-1003", Name: "USB-C Dock", Description: "Travel dock", Category: "Accessories", UnitCost: 36, SellingPrice: 79, CurrentStock: 15, ReorderLevel: 6, Active: true},
-	}
-	for _, product := range seedProducts {
-		res, err := tx.Exec(`
-			INSERT INTO products (sku, name, description, category, unit_cost, selling_price, current_stock, reorder_level, active, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			product.SKU, product.Name, product.Description, product.Category, product.UnitCost, product.SellingPrice, product.CurrentStock, product.ReorderLevel, boolInt(product.Active), now, now,
-		)
-		if err != nil {
-			return err
-		}
-		id, _ := res.LastInsertId()
-		productIDs[product.SKU] = id
-	}
-
-	res, err := tx.Exec(`
-		INSERT INTO suppliers (name, contact_name, email, phone, notes, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		"Northwind Components", "Ava Turner", "ava@northwind.test", "0207 111 2233", "Primary hardware supplier", now, now,
-	)
-	if err != nil {
+	if err := resetDemoSeedTx(tx); err != nil {
 		return err
 	}
-	supplierID, _ := res.LastInsertId()
-	for _, sku := range []string{"SKU-1001", "SKU-1002", "SKU-1003"} {
-		if _, err := tx.Exec(`INSERT INTO supplier_products (supplier_id, product_id) VALUES (?, ?)`, supplierID, productIDs[sku]); err != nil {
-			return err
-		}
+	if err := seedDemoBusinessTx(tx); err != nil {
+		return err
 	}
-
-	poID, err := insertPurchaseOrderTx(tx, supplierID, "Received", "Initial stock order", []PurchaseOrderItem{
-		{ProductID: productIDs["SKU-1001"], Quantity: 24, UnitCost: 42},
-		{ProductID: productIDs["SKU-1002"], Quantity: 8, UnitCost: 14},
-		{ProductID: productIDs["SKU-1003"], Quantity: 15, UnitCost: 36},
-	}, now)
-	if err != nil {
+	if err := storeDemoSeedVersionTx(tx, demoSeedVersion); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
 		return err
 	}
 
-	coID, err := insertCustomerOrderTx(tx, "Pixel Corner", "Shipped", "Seed order", []CustomerOrderItem{
-		{ProductID: productIDs["SKU-1001"], Quantity: 3, UnitPrice: 89},
-		{ProductID: productIDs["SKU-1002"], Quantity: 2, UnitPrice: 29},
-	}, now)
-	if err != nil {
+	if _, err := a.generateInsightRun(90, "system-seed"); err != nil {
 		return err
 	}
-
-	if err := applyInventoryChangeTx(tx, inventoryChange{
-		ProductID: productIDs["SKU-1001"], Delta: 24, Kind: "received", ReferenceType: "purchase_order", ReferenceID: poID, Reason: "Initial stock load", Actor: "system-seed",
-	}); err != nil {
-		return err
-	}
-	if err := applyInventoryChangeTx(tx, inventoryChange{
-		ProductID: productIDs["SKU-1002"], Delta: 8, Kind: "received", ReferenceType: "purchase_order", ReferenceID: poID, Reason: "Initial stock load", Actor: "system-seed",
-	}); err != nil {
-		return err
-	}
-	if err := applyInventoryChangeTx(tx, inventoryChange{
-		ProductID: productIDs["SKU-1003"], Delta: 15, Kind: "received", ReferenceType: "purchase_order", ReferenceID: poID, Reason: "Initial stock load", Actor: "system-seed",
-	}); err != nil {
-		return err
-	}
-	if err := applyInventoryChangeTx(tx, inventoryChange{
-		ProductID: productIDs["SKU-1001"], Delta: -3, Kind: "sold", ReferenceType: "customer_order", ReferenceID: coID, Reason: "Seed shipment", Actor: "system-seed",
-	}); err != nil {
-		return err
-	}
-	if err := applyInventoryChangeTx(tx, inventoryChange{
-		ProductID: productIDs["SKU-1002"], Delta: -2, Kind: "sold", ReferenceType: "customer_order", ReferenceID: coID, Reason: "Seed shipment", Actor: "system-seed",
-	}); err != nil {
-		return err
-	}
-
-	if _, err := tx.Exec(`UPDATE products SET current_stock = 21 WHERE sku = 'SKU-1001'`); err != nil {
-		return err
-	}
-	if _, err := tx.Exec(`UPDATE products SET current_stock = 6 WHERE sku = 'SKU-1002'`); err != nil {
-		return err
-	}
-
-	if err := auditTx(tx, "system-seed", "purchase_order", poID, "received", "seed purchase order created and received"); err != nil {
-		return err
-	}
-	if err := auditTx(tx, "system-seed", "customer_order", coID, "shipped", "seed customer order shipped"); err != nil {
-		return err
-	}
-
-	return tx.Commit()
+	return nil
 }
 
 func insertPurchaseOrderTx(tx *sql.Tx, supplierID int64, status, notes string, items []PurchaseOrderItem, now string) (int64, error) {
@@ -829,7 +758,7 @@ func (a *App) listProducts(query, status string) ([]Product, error) {
 	case "inactive":
 		sqlQuery += ` AND active = 0`
 	case "low":
-		sqlQuery += ` AND current_stock < reorder_level`
+		sqlQuery += ` AND current_stock < reorder_level AND current_stock > 0`
 	}
 	sqlQuery += ` ORDER BY name`
 
@@ -1001,7 +930,7 @@ func (a *App) supplierProductIDs(supplierID int64) ([]int64, error) {
 		return nil, err
 	}
 	defer rows.Close()
-	var ids []int64
+	ids := make([]int64, 0)
 	for rows.Next() {
 		var id int64
 		if err := rows.Scan(&id); err != nil {
@@ -1384,7 +1313,7 @@ func (a *App) dashboard() (DashboardSummary, error) {
 	if err := a.db.QueryRow(`SELECT COUNT(*) FROM customer_orders`).Scan(&orders); err != nil {
 		return DashboardSummary{}, err
 	}
-	if err := a.db.QueryRow(`SELECT COUNT(*) FROM products WHERE current_stock < reorder_level`).Scan(&lowStock); err != nil {
+	if err := a.db.QueryRow(`SELECT COUNT(*) FROM products WHERE current_stock < reorder_level AND current_stock > 0`).Scan(&lowStock); err != nil {
 		return DashboardSummary{}, err
 	}
 	if err := a.db.QueryRow(`SELECT COALESCE(SUM(current_stock * unit_cost), 0) FROM products`).Scan(&inventoryValue); err != nil {
