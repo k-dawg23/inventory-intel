@@ -38,6 +38,7 @@ function renderAll() {
   renderPurchaseOrders();
   renderCustomerOrders();
   renderInventory();
+  renderInsights();
   renderImports();
   renderAudit();
 }
@@ -72,6 +73,7 @@ async function api(path, options = {}) {
 
 function renderDashboard() {
   const data = state.data.dashboard;
+  const latestInsight = data.latestInsight;
   document.getElementById("dashboard").innerHTML = `
     <div class="grid kpi-grid">
       ${kpiCard("Products", data.products)}
@@ -104,6 +106,38 @@ function renderDashboard() {
         </ul>
       </article>
     </div>`;
+  if (latestInsight) {
+    document.getElementById("dashboard").innerHTML += `
+      <article class="card" style="margin-top: 16px;">
+        <div class="toolbar">
+          <div>
+            <h2>Latest AI Insight</h2>
+            <p class="muted">${latestInsight.mode} mode · ${latestInsight.model} · ${new Date(latestInsight.createdAt).toLocaleString()}</p>
+          </div>
+          <div class="actions">
+            <button id="dashboardInsightRefresh" class="primary">Refresh Insights</button>
+          </div>
+        </div>
+        ${latestInsight.status === "failed"
+          ? `<p class="danger">${latestInsight.errorMessage}</p>`
+          : `<ul class="mini-list">${latestInsight.recommendations.map((item) => `<li class="mini-row"><span><strong>${item.title}</strong><br /><span class="muted">${item.summary}</span></span><span class="status-pill">${item.severity}</span></li>`).join("")}</ul>`}
+      </article>`;
+    document.getElementById("dashboardInsightRefresh").addEventListener("click", refreshInsights);
+  } else {
+    document.getElementById("dashboard").innerHTML += `
+      <article class="card" style="margin-top: 16px;">
+        <div class="toolbar">
+          <div>
+            <h2>AI Insights</h2>
+            <p class="muted">No insight run has been generated yet.</p>
+          </div>
+          <div class="actions">
+            <button id="dashboardInsightRefresh" class="primary">Generate Insights</button>
+          </div>
+        </div>
+      </article>`;
+    document.getElementById("dashboardInsightRefresh").addEventListener("click", refreshInsights);
+  }
 }
 
 function kpiCard(label, value) {
@@ -476,6 +510,62 @@ function renderInventory() {
         </table>
       </div>
     </article>`;
+}
+
+function renderInsights() {
+  const runs = state.data.insightRuns || [];
+  const latest = runs[0];
+  document.getElementById("insights").innerHTML = `
+    <div class="grid" style="grid-template-columns: 1fr 1.1fr;">
+      <article class="card">
+        <div class="toolbar">
+          <div>
+            <h2>Generate AI Insights</h2>
+            <p class="muted">Use simulation mode by default, or real mode if configured in <code>.env</code>.</p>
+          </div>
+          <div class="actions">
+            <button id="insightRefreshBtn" class="primary">${latest ? "Refresh Insights" : "Generate Insights"}</button>
+          </div>
+        </div>
+        ${latest ? `
+          <p><strong>Status:</strong> ${latest.status}</p>
+          <p><strong>Mode:</strong> ${latest.mode}</p>
+          <p><strong>Model:</strong> ${latest.model}</p>
+          <p><strong>Window:</strong> ${latest.windowDays} days</p>
+          <p><strong>Generated:</strong> ${new Date(latest.createdAt).toLocaleString()}</p>
+          <p class="muted">${latest.inputSummary}</p>
+          ${latest.errorMessage ? `<p class="danger">${latest.errorMessage}</p>` : ""}
+          <h3>Latest Recommendations</h3>
+          <ul class="mini-list">
+            ${latest.recommendations.map((item) => `<li class="mini-row"><span><strong>${item.title}</strong><br /><span class="muted">${item.summary}</span><br /><span class="muted">${item.evidence}</span></span><span class="status-pill">${item.category}</span></li>`).join("")}
+          </ul>
+        ` : `<p class="muted">No stored insight runs yet.</p>`}
+      </article>
+      <article class="card">
+        <h2>Insight History</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Generated</th><th>Mode</th><th>Status</th><th>Window</th><th>Summary</th></tr></thead>
+            <tbody>${runs.map((run) => `<tr><td>${new Date(run.createdAt).toLocaleString()}</td><td>${run.mode}</td><td>${run.status}</td><td>${run.windowDays}d</td><td>${run.inputSummary}</td></tr>`).join("") || "<tr><td colspan='5'>No insight runs.</td></tr>"}</tbody>
+          </table>
+        </div>
+      </article>
+    </div>`;
+  document.getElementById("insightRefreshBtn").addEventListener("click", refreshInsights);
+}
+
+async function refreshInsights() {
+  try {
+    await api("/api/insights/generate", {
+      method: "POST",
+      body: JSON.stringify({ windowDays: 90 }),
+    });
+    flash("Insight run completed.");
+    await loadData();
+  } catch (error) {
+    flash(error.message, "error");
+    await loadData();
+  }
 }
 
 function renderImports() {

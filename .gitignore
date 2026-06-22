@@ -1,3 +1,4 @@
-inventory-intel
+/inventory-intel
 data/
 *.db
+.env

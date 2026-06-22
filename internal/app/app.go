@@ -21,10 +21,12 @@ import (
 
 type Config struct {
 	DBPath string
+	AI     AIConfig
 }
 
 type App struct {
 	db *sql.DB
+	ai AIConfig
 }
 
 type Product struct {
@@ -125,6 +127,7 @@ type DashboardSummary struct {
 	TopSelling       []TopProduct `json:"topSelling"`
 	LowStockProducts []Product    `json:"lowStockProducts"`
 	RecentAudit      []AuditEvent `json:"recentAudit"`
+	LatestInsight    *InsightRun  `json:"latestInsight,omitempty"`
 }
 
 type ChartPoint struct {
@@ -147,6 +150,7 @@ type BootstrapPayload struct {
 	CustomerOrders []CustomerOrder        `json:"customerOrders"`
 	Transactions   []InventoryTransaction `json:"transactions"`
 	AuditEvents    []AuditEvent           `json:"auditEvents"`
+	InsightRuns    []InsightRun           `json:"insightRuns"`
 }
 
 type csvResult struct {
@@ -169,7 +173,7 @@ func New(cfg Config) (*App, error) {
 		return nil, err
 	}
 
-	app := &App{db: db}
+	app := &App{db: db, ai: normalizeAIConfig(cfg.AI)}
 	if err := app.migrate(); err != nil {
 		_ = db.Close()
 		return nil, err
@@ -210,6 +214,8 @@ func (a *App) Routes() http.Handler {
 
 	mux.HandleFunc("GET /api/dashboard", a.handleDashboard)
 	mux.HandleFunc("GET /api/audit", a.handleAudit)
+	mux.HandleFunc("GET /api/insights", a.handleListInsightRuns)
+	mux.HandleFunc("POST /api/insights/generate", a.handleGenerateInsightRun)
 	mux.HandleFunc("POST /api/import/products", a.handleImportProducts)
 	mux.HandleFunc("POST /api/import/suppliers", a.handleImportSuppliers)
 	mux.HandleFunc("GET /api/export/products.csv", a.handleExportProducts)
@@ -790,6 +796,10 @@ func (a *App) bootstrapPayload() (BootstrapPayload, error) {
 	if err != nil {
 		return BootstrapPayload{}, err
 	}
+	insightRuns, err := a.listInsightRuns(20)
+	if err != nil {
+		return BootstrapPayload{}, err
+	}
 	return BootstrapPayload{
 		Dashboard:      dashboard,
 		Products:       products,
@@ -798,6 +808,7 @@ func (a *App) bootstrapPayload() (BootstrapPayload, error) {
 		CustomerOrders: customerOrders,
 		Transactions:   transactions,
 		AuditEvents:    auditEvents,
+		InsightRuns:    insightRuns,
 	}, nil
 }
 
@@ -1403,6 +1414,10 @@ func (a *App) dashboard() (DashboardSummary, error) {
 	if len(auditEvents) > 5 {
 		auditEvents = auditEvents[:5]
 	}
+	latestInsight, err := a.latestInsightRun()
+	if err != nil {
+		return DashboardSummary{}, err
+	}
 	return DashboardSummary{
 		Products:         products,
 		Suppliers:        suppliers,
@@ -1414,6 +1429,7 @@ func (a *App) dashboard() (DashboardSummary, error) {
 		TopSelling:       topSelling,
 		LowStockProducts: lowStockProducts,
 		RecentAudit:      auditEvents,
+		LatestInsight:    latestInsight,
 	}, nil
 }
 

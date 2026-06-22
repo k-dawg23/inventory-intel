@@ -129,3 +129,55 @@ func TestAuditEventCreatedForProductUpdate(t *testing.T) {
 		t.Fatal("expected product audit event")
 	}
 }
+
+func TestBuildInsightInputIncludesSignals(t *testing.T) {
+	app := newTestApp(t)
+	input, err := app.buildInsightInput(90)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if input.Summary.ProductCount == 0 {
+		t.Fatal("expected product count in insight summary")
+	}
+	if len(input.ProductSignals) == 0 {
+		t.Fatal("expected product signals")
+	}
+}
+
+func TestGenerateInsightRunSimulationPersistsRun(t *testing.T) {
+	app := newTestApp(t)
+	app.ai.Mode = "simulation"
+	run, err := app.generateInsightRun(90, "qa")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.Mode != "simulation" {
+		t.Fatalf("expected simulation mode, got %s", run.Mode)
+	}
+	if len(run.Recommendations) == 0 {
+		t.Fatal("expected recommendations")
+	}
+	runs, err := app.listInsightRuns(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(runs) == 0 {
+		t.Fatal("expected persisted insight run")
+	}
+}
+
+func TestGenerateInsightRunRealModeRequiresAPIKey(t *testing.T) {
+	app := newTestApp(t)
+	app.ai.Mode = "real"
+	app.ai.APIKey = ""
+	run, err := app.generateInsightRun(90, "qa")
+	if err == nil {
+		t.Fatal("expected missing api key error")
+	}
+	if run.Status != "failed" {
+		t.Fatalf("expected failed run status, got %s", run.Status)
+	}
+	if run.ErrorMessage == "" {
+		t.Fatal("expected stored error message")
+	}
+}
