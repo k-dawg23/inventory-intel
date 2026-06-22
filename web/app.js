@@ -2,6 +2,12 @@ const state = {
   actor: "Kenneth",
   currentView: "dashboard",
   data: null,
+  managementPanels: {
+    products: "list",
+    suppliers: "list",
+    purchaseOrders: "list",
+    customerOrders: "list",
+  },
 };
 
 const currency = new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP", maximumFractionDigits: 0 });
@@ -377,72 +383,233 @@ function areaChartCard(title, series, summaryLabel, summaryValue, summaryNote) {
   `;
 }
 
+function getManagementPanel(viewKey) {
+  return state.managementPanels[viewKey] || "list";
+}
+
+function setManagementPanel(viewKey, panel) {
+  state.managementPanels[viewKey] = panel;
+  syncManagementPanel(viewKey);
+}
+
+function openManagementForm(viewKey) {
+  setManagementPanel(viewKey, "form");
+}
+
+function syncManagementPanel(viewKey) {
+  const shell = document.querySelector(`[data-management-view="${viewKey}"]`);
+  if (!shell) {
+    return;
+  }
+  const activePanel = getManagementPanel(viewKey);
+  shell.dataset.activePanel = activePanel;
+  shell.querySelectorAll("[data-panel-toggle]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.panelToggle === activePanel);
+  });
+}
+
+function bindManagementPanel(viewKey) {
+  const shell = document.querySelector(`[data-management-view="${viewKey}"]`);
+  if (!shell) {
+    return;
+  }
+  shell.querySelectorAll("[data-panel-toggle]").forEach((button) => {
+    button.addEventListener("click", () => setManagementPanel(viewKey, button.dataset.panelToggle));
+  });
+  syncManagementPanel(viewKey);
+}
+
+function managementShell({ viewKey, listLabel, formLabel, formTitle, formContent, listContent }) {
+  return `
+    <div class="management-shell" data-management-view="${viewKey}" data-active-panel="${getManagementPanel(viewKey)}">
+      <div class="management-nav management-nav-mobile" aria-label="${viewMeta[viewKey].title} mobile view switcher">
+        <div class="management-chip-row">
+          <button class="management-chip" type="button" data-panel-toggle="list">${listLabel}</button>
+          <button class="management-chip" type="button" data-panel-toggle="form">${formLabel}</button>
+        </div>
+        <button class="management-fab" type="button" data-panel-toggle="form" aria-label="${formLabel}">+</button>
+      </div>
+
+      <div class="management-nav management-nav-tablet" aria-label="${viewMeta[viewKey].title} tablet view switcher">
+        <button class="management-tab" type="button" data-panel-toggle="list">${listLabel}</button>
+        <button class="management-tab" type="button" data-panel-toggle="form">${formLabel}</button>
+      </div>
+
+      <div class="management-panel management-panel-form">
+        <button class="management-back" type="button" data-panel-toggle="list">← Back to ${listLabel}</button>
+        ${formContent}
+      </div>
+
+      <div class="management-panel management-panel-list">
+        ${listContent}
+      </div>
+    </div>
+  `;
+}
+
+function renderRecordMeta(items) {
+  return `
+    <div class="record-meta">
+      ${items.map((item) => `
+        <div class="record-meta-item">
+          <span>${item.label}</span>
+          <strong>${item.value}</strong>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function productCards(products) {
+  return products.map((product) => `
+    <article class="record-card">
+      <div class="record-card-top">
+        <div class="table-title">
+          <strong>${product.name}</strong>
+          <span class="table-note">${product.sku}</span>
+        </div>
+        ${product.currentStock === 0 ? `<span class="status-badge danger">Out of stock</span>` : product.currentStock <= product.reorderLevel ? `<span class="status-badge low">Low stock</span>` : product.active ? `<span class="status-badge success">Active</span>` : `<span class="status-badge">Inactive</span>`}
+      </div>
+      ${renderRecordMeta([
+        { label: "Category", value: product.category || "Uncategorised" },
+        { label: "Stock", value: `${product.currentStock} / ${product.reorderLevel}` },
+        { label: "Price", value: currency.format(product.sellingPrice) },
+      ])}
+      <button class="secondary-button product-edit" data-id="${product.id}" type="button">Edit Product</button>
+    </article>
+  `).join("");
+}
+
+function supplierCards(suppliers) {
+  return suppliers.map((supplier) => `
+    <article class="record-card">
+      <div class="record-card-top">
+        <div class="table-title">
+          <strong>${supplier.name}</strong>
+          <span class="table-note">${supplier.notes || "No supplier notes yet"}</span>
+        </div>
+        <span class="status-badge">${(supplier.productIds || []).length} linked</span>
+      </div>
+      ${renderRecordMeta([
+        { label: "Contact", value: supplier.contactName || "—" },
+        { label: "Email", value: supplier.email || "—" },
+        { label: "Phone", value: supplier.phone || "—" },
+      ])}
+      <button class="secondary-button supplier-edit" data-id="${supplier.id}" type="button">Edit Supplier</button>
+    </article>
+  `).join("");
+}
+
+function purchaseOrderCards(orders, products) {
+  return orders.map((order) => `
+    <article class="record-card">
+      <div class="record-card-top">
+        <div class="table-title">
+          <strong>#${order.id}</strong>
+          <span class="table-note">${order.supplier}</span>
+        </div>
+        ${statusBadge(order.status)}
+      </div>
+      ${renderRecordMeta([
+        { label: "Items", value: `${order.items.length} lines` },
+        { label: "Summary", value: order.items.map((item) => lineSummary(products, item)).join(", ") || "No items" },
+      ])}
+    </article>
+  `).join("");
+}
+
+function customerOrderCards(orders) {
+  return orders.map((order) => `
+    <article class="record-card">
+      <div class="record-card-top">
+        <div class="table-title">
+          <strong>#${order.id}</strong>
+          <span class="table-note">${order.customerName}</span>
+        </div>
+        ${statusBadge(order.status)}
+      </div>
+      ${renderRecordMeta([
+        { label: "Items", value: `${order.items.length} lines` },
+        { label: "Summary", value: order.items.map((item) => `${item.product || item.productId} × ${item.quantity}`).join(", ") || "No items" },
+      ])}
+    </article>
+  `).join("");
+}
+
 function renderProducts() {
   const products = state.data.products;
   document.getElementById("products").innerHTML = `
     <div class="screen-section">
-      <div class="screen-grid">
-        <article class="panel-card form-card">
-          <div class="panel-header">
-            <div>
-              <h3>Product Details</h3>
-              <p class="subtle-text">Create or update catalog items without leaving the dashboard flow.</p>
+      ${managementShell({
+        viewKey: "products",
+        listLabel: "Products",
+        formLabel: "Create Product",
+        formTitle: "Product Details",
+        formContent: `
+          <article class="panel-card form-card">
+            <div class="panel-header">
+              <div>
+                <h3>Product Details</h3>
+                <p class="subtle-text">Create or update catalog items without leaving the dashboard flow.</p>
+              </div>
             </div>
-          </div>
-          <form id="productForm">
-            <input type="hidden" name="id" />
-            <div class="form-grid two-col">
-              <label class="field"><span class="field-label">SKU</span><input name="sku" required /></label>
-              <label class="field"><span class="field-label">Name</span><input name="name" required /></label>
-              <label class="field"><span class="field-label">Category</span><input name="category" required /></label>
-              <label class="field"><span class="field-label">Unit Cost</span><input name="unitCost" type="number" step="0.01" required /></label>
-              <label class="field"><span class="field-label">Selling Price</span><input name="sellingPrice" type="number" step="0.01" required /></label>
-              <label class="field"><span class="field-label">Current Stock</span><input name="currentStock" type="number" required /></label>
-              <label class="field"><span class="field-label">Reorder Level</span><input name="reorderLevel" type="number" required /></label>
-              <label class="field"><span class="field-label">Status</span><select name="active"><option value="true">Active</option><option value="false">Inactive</option></select></label>
+            <form id="productForm">
+              <input type="hidden" name="id" />
+              <div class="form-grid two-col">
+                <label class="field"><span class="field-label">SKU</span><input name="sku" required /></label>
+                <label class="field"><span class="field-label">Name</span><input name="name" required /></label>
+                <label class="field"><span class="field-label">Category</span><input name="category" required /></label>
+                <label class="field"><span class="field-label">Unit Cost</span><input name="unitCost" type="number" step="0.01" required /></label>
+                <label class="field"><span class="field-label">Selling Price</span><input name="sellingPrice" type="number" step="0.01" required /></label>
+                <label class="field"><span class="field-label">Current Stock</span><input name="currentStock" type="number" required /></label>
+                <label class="field"><span class="field-label">Reorder Level</span><input name="reorderLevel" type="number" required /></label>
+                <label class="field"><span class="field-label">Status</span><select name="active"><option value="true">Active</option><option value="false">Inactive</option></select></label>
+              </div>
+              <label class="field"><span class="field-label">Description</span><textarea name="description"></textarea></label>
+              <div class="action-row">
+                <button class="primary-button" type="submit">Save Product</button>
+                <button class="secondary-button" type="button" id="productReset">Reset</button>
+              </div>
+            </form>
+          </article>
+        `,
+        listContent: `
+          <article class="card">
+            <div class="toolbar">
+              <div>
+                <h3>Product Catalog</h3>
+                <p class="subtle-text">Search, filter, and review stock health across the catalog.</p>
+              </div>
+              <div class="table-controls">
+                <input id="productSearch" placeholder="Search SKU or name" />
+                <select id="productFilter">
+                  <option value="all">All products</option>
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                  <option value="low">Low stock</option>
+                  <option value="out">Out of stock</option>
+                </select>
+              </div>
             </div>
-            <label class="field"><span class="field-label">Description</span><textarea name="description"></textarea></label>
-            <div class="action-row">
-              <button class="primary-button" type="submit">Save Product</button>
-              <button class="secondary-button" type="button" id="productReset">Reset</button>
+            <div id="productCards" class="record-card-list mobile-only">${productCards(products)}</div>
+            <div class="table-wrap tablet-up-only">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Product</th>
+                    <th>Category</th>
+                    <th>Stock</th>
+                    <th>Price</th>
+                    <th>Status</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="productTable">${productRows(products)}</tbody>
+              </table>
             </div>
-          </form>
-        </article>
-
-        <article class="card">
-          <div class="toolbar">
-            <div>
-              <h3>Product Catalog</h3>
-              <p class="subtle-text">Search, filter, and review stock health across the catalog.</p>
-            </div>
-            <div class="table-controls">
-              <input id="productSearch" placeholder="Search SKU or name" />
-              <select id="productFilter">
-                <option value="all">All products</option>
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
-                <option value="low">Low stock</option>
-                <option value="out">Out of stock</option>
-              </select>
-            </div>
-          </div>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Product</th>
-                  <th>Category</th>
-                  <th>Stock</th>
-                  <th>Price</th>
-                  <th>Status</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody id="productTable">${productRows(products)}</tbody>
-            </table>
-          </div>
-        </article>
-      </div>
+          </article>
+        `,
+      })}
 
       <article class="card">
         <div class="toolbar">
@@ -467,6 +634,7 @@ function renderProducts() {
   document.getElementById("productForm").addEventListener("submit", submitProductForm);
   document.getElementById("productReset").addEventListener("click", () => document.getElementById("productForm").reset());
   document.getElementById("adjustmentForm").addEventListener("submit", submitAdjustmentForm);
+  bindManagementPanel("products");
   bindProductEditButtons();
 }
 
@@ -484,6 +652,7 @@ function filterProductsTable() {
     return matchesQuery && matchesFilter;
   });
   document.getElementById("productTable").innerHTML = productRows(rows);
+  document.getElementById("productCards").innerHTML = productCards(rows);
   bindProductEditButtons();
 }
 
@@ -528,6 +697,7 @@ function bindProductEditButtons() {
       }).forEach(([key, value]) => {
         form.elements[key].value = value;
       });
+      openManagementForm("products");
     });
   });
 }
@@ -553,6 +723,7 @@ async function submitProductForm(event) {
     });
     flash("Product saved.");
     form.reset();
+    setManagementPanel("products", "list");
     await loadData();
   } catch (error) {
     flash(error.message, "error");
@@ -583,61 +754,69 @@ function renderSuppliers() {
   const suppliers = state.data.suppliers;
   const products = state.data.products;
   document.getElementById("suppliers").innerHTML = `
-    <div class="screen-grid">
-      <article class="panel-card form-card">
-        <div class="panel-header">
-          <div>
-            <h3>Supplier Details</h3>
-            <p class="subtle-text">Keep supplier relationships and linked products tidy and easy to review.</p>
+    ${managementShell({
+      viewKey: "suppliers",
+      listLabel: "Suppliers",
+      formLabel: "Create Supplier",
+      formContent: `
+        <article class="panel-card form-card">
+          <div class="panel-header">
+            <div>
+              <h3>Supplier Details</h3>
+              <p class="subtle-text">Keep supplier relationships and linked products tidy and easy to review.</p>
+            </div>
           </div>
-        </div>
-        <form id="supplierForm">
-          <input type="hidden" name="id" />
-          <div class="form-grid two-col">
-            <label class="field"><span class="field-label">Name</span><input name="name" required /></label>
-            <label class="field"><span class="field-label">Contact</span><input name="contactName" /></label>
-            <label class="field"><span class="field-label">Email</span><input name="email" type="email" /></label>
-            <label class="field"><span class="field-label">Phone</span><input name="phone" /></label>
+          <form id="supplierForm">
+            <input type="hidden" name="id" />
+            <div class="form-grid two-col">
+              <label class="field"><span class="field-label">Name</span><input name="name" required /></label>
+              <label class="field"><span class="field-label">Contact</span><input name="contactName" /></label>
+              <label class="field"><span class="field-label">Email</span><input name="email" type="email" /></label>
+              <label class="field"><span class="field-label">Phone</span><input name="phone" /></label>
+            </div>
+            <label class="field"><span class="field-label">Notes</span><textarea name="notes"></textarea></label>
+            <label class="field"><span class="field-label">Linked Products</span><select name="productIds" multiple size="7">${products.map((product) => `<option value="${product.id}">${product.name}</option>`).join("")}</select></label>
+            <div class="action-row">
+              <button class="primary-button" type="submit">Save Supplier</button>
+              <button class="secondary-button" type="button" id="supplierReset">Reset</button>
+            </div>
+          </form>
+        </article>
+      `,
+      listContent: `
+        <article class="card">
+          <div class="toolbar">
+            <div>
+              <h3>Supplier Directory</h3>
+              <p class="subtle-text">Search suppliers and review the breadth of their product coverage.</p>
+            </div>
+            <div class="table-controls">
+              <input id="supplierSearch" placeholder="Search suppliers" />
+            </div>
           </div>
-          <label class="field"><span class="field-label">Notes</span><textarea name="notes"></textarea></label>
-          <label class="field"><span class="field-label">Linked Products</span><select name="productIds" multiple size="7">${products.map((product) => `<option value="${product.id}">${product.name}</option>`).join("")}</select></label>
-          <div class="action-row">
-            <button class="primary-button" type="submit">Save Supplier</button>
-            <button class="secondary-button" type="button" id="supplierReset">Reset</button>
+          <div id="supplierCards" class="record-card-list mobile-only">${supplierCards(suppliers)}</div>
+          <div class="table-wrap tablet-up-only">
+            <table>
+              <thead>
+                <tr>
+                  <th>Supplier</th>
+                  <th>Contact</th>
+                  <th>Email</th>
+                  <th>Linked Products</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="supplierTable">${supplierRows(suppliers)}</tbody>
+            </table>
           </div>
-        </form>
-      </article>
-
-      <article class="card">
-        <div class="toolbar">
-          <div>
-            <h3>Supplier Directory</h3>
-            <p class="subtle-text">Search suppliers and review the breadth of their product coverage.</p>
-          </div>
-          <div class="table-controls">
-            <input id="supplierSearch" placeholder="Search suppliers" />
-          </div>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Supplier</th>
-                <th>Contact</th>
-                <th>Email</th>
-                <th>Linked Products</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody id="supplierTable">${supplierRows(suppliers)}</tbody>
-          </table>
-        </div>
-      </article>
-    </div>
+        </article>
+      `,
+    })}
   `;
   document.getElementById("supplierForm").addEventListener("submit", submitSupplierForm);
   document.getElementById("supplierReset").addEventListener("click", () => document.getElementById("supplierForm").reset());
   document.getElementById("supplierSearch").addEventListener("input", filterSuppliers);
+  bindManagementPanel("suppliers");
   bindSupplierButtons();
 }
 
@@ -657,6 +836,7 @@ function filterSuppliers() {
   const q = document.getElementById("supplierSearch").value.toLowerCase();
   const rows = state.data.suppliers.filter((supplier) => !q || supplier.name.toLowerCase().includes(q) || supplier.contactName.toLowerCase().includes(q));
   document.getElementById("supplierTable").innerHTML = supplierRows(rows);
+  document.getElementById("supplierCards").innerHTML = supplierCards(rows);
   bindSupplierButtons();
 }
 
@@ -675,6 +855,7 @@ function bindSupplierButtons() {
       [...form.productIds.options].forEach((option) => {
         option.selected = productIds.includes(Number(option.value));
       });
+      openManagementForm("suppliers");
     });
   });
 }
@@ -697,6 +878,7 @@ async function submitSupplierForm(event) {
     });
     flash("Supplier saved.");
     form.reset();
+    setManagementPanel("suppliers", "list");
     await loadData();
   } catch (error) {
     flash(error.message, "error");
@@ -707,65 +889,73 @@ function renderPurchaseOrders() {
   const suppliers = state.data.suppliers;
   const products = state.data.products;
   document.getElementById("purchaseOrders").innerHTML = `
-    <div class="screen-grid">
-      <article class="panel-card form-card">
-        <div class="panel-header">
-          <div>
-            <h3>Create Purchase Order</h3>
-            <p class="subtle-text">Capture inbound stock requests and receive inventory through clear status changes.</p>
+    ${managementShell({
+      viewKey: "purchaseOrders",
+      listLabel: "Orders",
+      formLabel: "Create Order",
+      formContent: `
+        <article class="panel-card form-card">
+          <div class="panel-header">
+            <div>
+              <h3>Create Purchase Order</h3>
+              <p class="subtle-text">Capture inbound stock requests and receive inventory through clear status changes.</p>
+            </div>
           </div>
-        </div>
-        <form id="poForm">
-          <div class="form-grid two-col">
-            <label class="field"><span class="field-label">Supplier</span><select name="supplierId">${suppliers.map((supplier) => `<option value="${supplier.id}">${supplier.name}</option>`).join("")}</select></label>
-            <label class="field"><span class="field-label">Status</span><select name="status"><option>Draft</option><option>Ordered</option><option>Received</option><option>Cancelled</option></select></label>
+          <form id="poForm">
+            <div class="form-grid two-col">
+              <label class="field"><span class="field-label">Supplier</span><select name="supplierId">${suppliers.map((supplier) => `<option value="${supplier.id}">${supplier.name}</option>`).join("")}</select></label>
+              <label class="field"><span class="field-label">Status</span><select name="status"><option>Draft</option><option>Ordered</option><option>Received</option><option>Cancelled</option></select></label>
+            </div>
+            <label class="field"><span class="field-label">Notes</span><textarea name="notes"></textarea></label>
+            <div class="line-item-stack" id="poItems"></div>
+            <div class="action-row">
+              <button class="secondary-button" type="button" id="poAddItem">Add Line</button>
+              <button class="primary-button" type="submit">Save Purchase Order</button>
+            </div>
+          </form>
+        </article>
+      `,
+      listContent: `
+        <article class="card">
+          <div class="toolbar">
+            <div>
+              <h3>Purchase Orders</h3>
+              <p class="subtle-text">Review supplier, status, and receiving details without leaving the page.</p>
+            </div>
+            <div class="table-controls">
+              <input id="poSearch" placeholder="Search supplier or status" />
+              <select id="poStatusFilter">
+                <option value="all">All statuses</option>
+                <option value="Draft">Draft</option>
+                <option value="Ordered">Ordered</option>
+                <option value="Received">Received</option>
+                <option value="Cancelled">Cancelled</option>
+              </select>
+            </div>
           </div>
-          <label class="field"><span class="field-label">Notes</span><textarea name="notes"></textarea></label>
-          <div class="line-item-stack" id="poItems"></div>
-          <div class="action-row">
-            <button class="secondary-button" type="button" id="poAddItem">Add Line</button>
-            <button class="primary-button" type="submit">Save Purchase Order</button>
+          <div id="poCards" class="record-card-list mobile-only">${purchaseOrderCards(state.data.purchaseOrders, products)}</div>
+          <div class="table-wrap tablet-up-only">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Supplier</th>
+                  <th>Status</th>
+                  <th>Items</th>
+                </tr>
+              </thead>
+              <tbody id="poTable">${purchaseOrderRows(state.data.purchaseOrders, products)}</tbody>
+            </table>
           </div>
-        </form>
-      </article>
-
-      <article class="card">
-        <div class="toolbar">
-          <div>
-            <h3>Purchase Orders</h3>
-            <p class="subtle-text">Review supplier, status, and receiving details without leaving the page.</p>
-          </div>
-          <div class="table-controls">
-            <input id="poSearch" placeholder="Search supplier or status" />
-            <select id="poStatusFilter">
-              <option value="all">All statuses</option>
-              <option value="Draft">Draft</option>
-              <option value="Ordered">Ordered</option>
-              <option value="Received">Received</option>
-              <option value="Cancelled">Cancelled</option>
-            </select>
-          </div>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Supplier</th>
-                <th>Status</th>
-                <th>Items</th>
-              </tr>
-            </thead>
-            <tbody id="poTable">${purchaseOrderRows(state.data.purchaseOrders, products)}</tbody>
-          </table>
-        </div>
-      </article>
-    </div>
+        </article>
+      `,
+    })}
   `;
   initLineItemBuilder("poItems", "poAddItem", products, "unitCost");
   document.getElementById("poForm").addEventListener("submit", submitPurchaseOrder);
   document.getElementById("poSearch").addEventListener("input", filterPurchaseOrders);
   document.getElementById("poStatusFilter").addEventListener("change", filterPurchaseOrders);
+  bindManagementPanel("purchaseOrders");
 }
 
 function purchaseOrderRows(orders, products) {
@@ -788,6 +978,7 @@ function filterPurchaseOrders() {
     return matchesQuery && matchesStatus;
   });
   document.getElementById("poTable").innerHTML = purchaseOrderRows(rows, state.data.products);
+  document.getElementById("poCards").innerHTML = purchaseOrderCards(rows, state.data.products);
 }
 
 async function submitPurchaseOrder(event) {
@@ -805,6 +996,7 @@ async function submitPurchaseOrder(event) {
       body: JSON.stringify(payload),
     });
     flash("Purchase order saved.");
+    setManagementPanel("purchaseOrders", "list");
     await loadData();
   } catch (error) {
     flash(error.message, "error");
@@ -814,66 +1006,74 @@ async function submitPurchaseOrder(event) {
 function renderCustomerOrders() {
   const products = state.data.products;
   document.getElementById("customerOrders").innerHTML = `
-    <div class="screen-grid">
-      <article class="panel-card form-card">
-        <div class="panel-header">
-          <div>
-            <h3>Create Customer Order</h3>
-            <p class="subtle-text">Log outbound demand and keep fulfillment statuses clean and readable.</p>
+    ${managementShell({
+      viewKey: "customerOrders",
+      listLabel: "Orders",
+      formLabel: "Create Order",
+      formContent: `
+        <article class="panel-card form-card">
+          <div class="panel-header">
+            <div>
+              <h3>Create Customer Order</h3>
+              <p class="subtle-text">Log outbound demand and keep fulfillment statuses clean and readable.</p>
+            </div>
           </div>
-        </div>
-        <form id="customerOrderForm">
-          <div class="form-grid two-col">
-            <label class="field"><span class="field-label">Customer</span><input name="customerName" required /></label>
-            <label class="field"><span class="field-label">Status</span><select name="status"><option>Pending</option><option>Processing</option><option>Shipped</option><option>Completed</option><option>Cancelled</option></select></label>
+          <form id="customerOrderForm">
+            <div class="form-grid two-col">
+              <label class="field"><span class="field-label">Customer</span><input name="customerName" required /></label>
+              <label class="field"><span class="field-label">Status</span><select name="status"><option>Pending</option><option>Processing</option><option>Shipped</option><option>Completed</option><option>Cancelled</option></select></label>
+            </div>
+            <label class="field"><span class="field-label">Notes</span><textarea name="notes"></textarea></label>
+            <div class="line-item-stack" id="customerOrderItems"></div>
+            <div class="action-row">
+              <button class="secondary-button" type="button" id="customerOrderAddItem">Add Line</button>
+              <button class="primary-button" type="submit">Save Customer Order</button>
+            </div>
+          </form>
+        </article>
+      `,
+      listContent: `
+        <article class="card">
+          <div class="toolbar">
+            <div>
+              <h3>Customer Orders</h3>
+              <p class="subtle-text">Track outbound flow, fulfillment status, and ordered items at a glance.</p>
+            </div>
+            <div class="table-controls">
+              <input id="customerOrderSearch" placeholder="Search customer or status" />
+              <select id="customerOrderStatus">
+                <option value="all">All statuses</option>
+                <option value="Pending">Pending</option>
+                <option value="Processing">Processing</option>
+                <option value="Shipped">Shipped</option>
+                <option value="Completed">Completed</option>
+                <option value="Cancelled">Cancelled</option>
+              </select>
+            </div>
           </div>
-          <label class="field"><span class="field-label">Notes</span><textarea name="notes"></textarea></label>
-          <div class="line-item-stack" id="customerOrderItems"></div>
-          <div class="action-row">
-            <button class="secondary-button" type="button" id="customerOrderAddItem">Add Line</button>
-            <button class="primary-button" type="submit">Save Customer Order</button>
+          <div id="customerOrderCards" class="record-card-list mobile-only">${customerOrderCards(state.data.customerOrders)}</div>
+          <div class="table-wrap tablet-up-only">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Customer</th>
+                  <th>Status</th>
+                  <th>Items</th>
+                </tr>
+              </thead>
+              <tbody id="customerOrderTable">${customerOrderRows(state.data.customerOrders)}</tbody>
+            </table>
           </div>
-        </form>
-      </article>
-
-      <article class="card">
-        <div class="toolbar">
-          <div>
-            <h3>Customer Orders</h3>
-            <p class="subtle-text">Track outbound flow, fulfillment status, and ordered items at a glance.</p>
-          </div>
-          <div class="table-controls">
-            <input id="customerOrderSearch" placeholder="Search customer or status" />
-            <select id="customerOrderStatus">
-              <option value="all">All statuses</option>
-              <option value="Pending">Pending</option>
-              <option value="Processing">Processing</option>
-              <option value="Shipped">Shipped</option>
-              <option value="Completed">Completed</option>
-              <option value="Cancelled">Cancelled</option>
-            </select>
-          </div>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Customer</th>
-                <th>Status</th>
-                <th>Items</th>
-              </tr>
-            </thead>
-            <tbody id="customerOrderTable">${customerOrderRows(state.data.customerOrders)}</tbody>
-          </table>
-        </div>
-      </article>
-    </div>
+        </article>
+      `,
+    })}
   `;
   initLineItemBuilder("customerOrderItems", "customerOrderAddItem", products, "unitPrice");
   document.getElementById("customerOrderForm").addEventListener("submit", submitCustomerOrder);
   document.getElementById("customerOrderSearch").addEventListener("input", filterCustomerOrders);
   document.getElementById("customerOrderStatus").addEventListener("change", filterCustomerOrders);
+  bindManagementPanel("customerOrders");
 }
 
 function customerOrderRows(orders) {
@@ -896,6 +1096,7 @@ function filterCustomerOrders() {
     return matchesQuery && matchesStatus;
   });
   document.getElementById("customerOrderTable").innerHTML = customerOrderRows(rows);
+  document.getElementById("customerOrderCards").innerHTML = customerOrderCards(rows);
 }
 
 async function submitCustomerOrder(event) {
@@ -913,6 +1114,7 @@ async function submitCustomerOrder(event) {
       body: JSON.stringify(payload),
     });
     flash("Customer order saved.");
+    setManagementPanel("customerOrders", "list");
     await loadData();
   } catch (error) {
     flash(error.message, "error");
