@@ -7,49 +7,109 @@
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <div class="shell">
-      <aside class="sidebar">
-        <div>
-          <p class="eyebrow">Inventory Intel</p>
-          <h1>Retail Ops Control</h1>
-          <p class="muted">Inventory management for small retail and e-commerce teams.</p>
+    <div class="app-shell">
+      <button id="sidebarBackdrop" class="sidebar-backdrop" aria-label="Close menu"></button>
+
+      <aside id="sidebar" class="sidebar">
+        <div class="brand-block">
+          <div class="brand-mark" aria-hidden="true">
+            <span class="brand-bar brand-bar-sm"></span>
+            <span class="brand-bar brand-bar-md"></span>
+            <span class="brand-bar brand-bar-lg"></span>
+            <span class="brand-bar brand-bar-md"></span>
+          </div>
+          <div>
+            <p class="brand-name">Inventory Intel</p>
+            <h1 class="brand-heading">Retail Ops Control</h1>
+            <p class="brand-copy">Inventory management for small e-commerce businesses.</p>
+          </div>
         </div>
-        <nav class="nav">
-          <button data-view="dashboard" class="nav-link active">Dashboard</button>
-          <button data-view="products" class="nav-link">Products</button>
-          <button data-view="suppliers" class="nav-link">Suppliers</button>
-          <button data-view="purchaseOrders" class="nav-link">Purchase Orders</button>
-          <button data-view="customerOrders" class="nav-link">Customer Orders</button>
-          <button data-view="inventory" class="nav-link">Inventory Ledger</button>
-          <button data-view="insights" class="nav-link">AI Insights</button>
-          <button data-view="imports" class="nav-link">Imports / Exports</button>
-          <button data-view="audit" class="nav-link">Audit Log</button>
+
+        <nav class="nav" aria-label="Primary">
+          <button data-view="dashboard" class="nav-link active">
+            <span class="nav-icon">⌂</span>
+            <span>Dashboard</span>
+          </button>
+          <button data-view="products" class="nav-link">
+            <span class="nav-icon">◫</span>
+            <span>Products</span>
+          </button>
+          <button data-view="suppliers" class="nav-link">
+            <span class="nav-icon">◌</span>
+            <span>Suppliers</span>
+          </button>
+          <button data-view="purchaseOrders" class="nav-link">
+            <span class="nav-icon">⟟</span>
+            <span>Purchase Orders</span>
+          </button>
+          <button data-view="customerOrders" class="nav-link">
+            <span class="nav-icon">☰</span>
+            <span>Customer Orders</span>
+          </button>
+          <button data-view="inventory" class="nav-link">
+            <span class="nav-icon">≣</span>
+            <span>Inventory Ledger</span>
+          </button>
+          <button data-view="imports" class="nav-link">
+            <span class="nav-icon">⇅</span>
+            <span>Imports / Exports</span>
+          </button>
+          <button data-view="insights" class="nav-link">
+            <span class="nav-icon">✦</span>
+            <span>AI Insights</span>
+            <span class="nav-badge">New</span>
+          </button>
+          <button data-view="audit" class="nav-link">
+            <span class="nav-icon">◍</span>
+            <span>Audit Log</span>
+          </button>
         </nav>
+
+        <div class="sidebar-footer">
+          <div class="operator-card">
+            <div id="operatorAvatar" class="operator-avatar">K</div>
+            <div class="operator-meta">
+              <strong id="operatorName">Kenneth</strong>
+              <span>Operator</span>
+            </div>
+          </div>
+          <label class="field">
+            <span class="field-label">Operator name</span>
+            <input id="actorInput" value="Kenneth" />
+          </label>
+        </div>
       </aside>
 
-      <main class="main">
-        <header class="topbar">
-          <div>
-            <p class="eyebrow">Operator</p>
-            <input id="actorInput" value="Kenneth" />
-          </div>
-          <div class="topbar-actions">
-            <button id="refreshBtn" class="primary">Refresh Data</button>
-          </div>
-        </header>
+      <div class="content-shell">
+        <main class="main-content">
+          <header class="page-header">
+            <div class="page-header-main">
+              <button id="menuToggle" class="menu-toggle" aria-label="Open menu">☰</button>
+              <div>
+                <h2 id="pageTitle">Dashboard</h2>
+                <p id="pageSubtitle">Overview of your inventory operations</p>
+              </div>
+            </div>
 
-        <section id="flash" class="flash hidden"></section>
+            <div class="page-actions">
+              <button class="ghost-button" type="button">Jun 22 – Jun 28, 2026</button>
+              <button id="refreshBtn" class="primary-button" type="button">Refresh Data</button>
+            </div>
+          </header>
 
-        <section id="dashboard" class="view active"></section>
-        <section id="products" class="view"></section>
-        <section id="suppliers" class="view"></section>
-        <section id="purchaseOrders" class="view"></section>
-        <section id="customerOrders" class="view"></section>
-        <section id="inventory" class="view"></section>
-        <section id="insights" class="view"></section>
-        <section id="imports" class="view"></section>
-        <section id="audit" class="view"></section>
-      </main>
+          <section id="flash" class="flash hidden"></section>
+
+          <section id="dashboard" class="view active"></section>
+          <section id="products" class="view"></section>
+          <section id="suppliers" class="view"></section>
+          <section id="purchaseOrders" class="view"></section>
+          <section id="customerOrders" class="view"></section>
+          <section id="inventory" class="view"></section>
+          <section id="imports" class="view"></section>
+          <section id="insights" class="view"></section>
+          <section id="audit" class="view"></section>
+        </main>
+      </div>
     </div>
 
     <script src="/app.js" defer></script>
