@@ -54,7 +54,7 @@ func countRows(t *testing.T, db *sql.DB, query string) int {
 
 func loginAsDemo(t *testing.T, app *App) *http.Cookie {
 	t.Helper()
-	body := strings.NewReader(`{"identifier":"kenneth","password":"DemoAdmin123!"}`)
+	body := strings.NewReader(`{"identifier":"admin@inventoryintel.demo","password":"DemoAdmin123!"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/auth/login", body)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -254,7 +254,7 @@ func TestProtectedAPIRequiresAuthentication(t *testing.T) {
 
 func TestDemoAdminLoginCreatesSessionAndUpdatesLastLogin(t *testing.T) {
 	app := newTestApp(t)
-	body := strings.NewReader(`{"identifier":"kenneth@inventoryintel.demo","password":"DemoAdmin123!"}`)
+	body := strings.NewReader(`{"identifier":"admin@inventoryintel.demo","password":"DemoAdmin123!"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/auth/login", body)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()

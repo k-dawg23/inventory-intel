@@ -76,7 +76,7 @@ function bindAuth() {
   document.getElementById("loginForm").addEventListener("submit", handleLogin);
   document.getElementById("logoutBtn").addEventListener("click", handleLogout);
   document.getElementById("useDemoBtn").addEventListener("click", () => {
-    document.getElementById("loginIdentifier").value = document.getElementById("demoUsername").textContent.trim();
+    document.getElementById("loginIdentifier").value = document.getElementById("demoEmail").textContent.trim();
     document.getElementById("loginPassword").value = document.getElementById("demoPassword").textContent.trim();
     clearAuthError();
   });

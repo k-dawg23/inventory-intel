@@ -10,7 +10,7 @@ It also includes AI-powered inventory insights with two modes:
 
 The MVP includes a single seeded administrator account:
 
-- Email: `kenneth@inventoryintel.demo`
+- Email: `admin@inventoryintel.demo`
 - Username: `kenneth`
 - Password: `DemoAdmin123!`
 

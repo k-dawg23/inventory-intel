@@ -16,7 +16,8 @@ import (
 )
 
 const (
-	demoAdminEmail    = "kenneth@inventoryintel.demo"
+	demoAdminEmail    = "admin@inventoryintel.demo"
+	legacyDemoEmail   = "kenneth@inventoryintel.demo"
 	demoAdminUsername = "kenneth"
 	demoAdminPassword = "DemoAdmin123!"
 	demoAdminName     = "Kenneth"
@@ -62,12 +63,27 @@ func (a *App) ensureDemoAdminUser() error {
 		)
 		return err
 	case errors.Is(err, sql.ErrNoRows):
-		_, err = a.db.Exec(`
-			INSERT INTO users (email, password_hash, name, created_at, last_login)
-			VALUES (?, ?, ?, ?, ?)`,
-			demoAdminEmail, passwordHash, demoAdminName, nowString(), "",
-		)
-		return err
+		var legacyUserID int64
+		legacyErr := a.db.QueryRow(`SELECT id FROM users WHERE email = ?`, legacyDemoEmail).Scan(&legacyUserID)
+		switch {
+		case legacyErr == nil:
+			_, err = a.db.Exec(`
+				UPDATE users
+				SET email = ?, password_hash = ?, name = ?
+				WHERE id = ?`,
+				demoAdminEmail, passwordHash, demoAdminName, legacyUserID,
+			)
+			return err
+		case errors.Is(legacyErr, sql.ErrNoRows):
+			_, err = a.db.Exec(`
+				INSERT INTO users (email, password_hash, name, created_at, last_login)
+				VALUES (?, ?, ?, ?, ?)`,
+				demoAdminEmail, passwordHash, demoAdminName, nowString(), "",
+			)
+			return err
+		default:
+			return legacyErr
+		}
 	default:
 		return err
 	}
